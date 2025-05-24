@@ -28,6 +28,6 @@
 - `README.md`: Описание проекта.
 ## Видео-демонстрация
 [Ссылка на видео](video/video.mp4) или встроенное видео ниже:
-<video src="video/video.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/e27b4f8b-fcdb-41b9-b800-853dbb5de39a" controls width="100%"></video>
 https://github.com/user-attachments/assets/e27b4f8b-fcdb-41b9-b800-853dbb5de39a
 
