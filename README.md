@@ -23,8 +23,9 @@
 - `analysis_and_model.py`: Страница с анализом данных и моделью.
 - `presentation.py`: Страница с презентацией проекта.
 - `requirements.txt`: Файл с зависимостями.
-- `data/`: Папка с данными.
+- `data/predictive_maintenance.csv`: Папка с данными.
+- `video/video.mp4`: Папка с видео-демонстрацией.
 - `README.md`: Описание проекта.
 ## Видео-демонстрация
-[Ссылка на видео](video/demo.mp4) или встроенное видео ниже:
-<video src="video/demo.mp4" controls width="100%"></video>
+[Ссылка на видео](video/video.mp4) или встроенное видео ниже:
+<video src="video/video.mp4" controls width="100%"></video>
