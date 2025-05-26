@@ -12,7 +12,6 @@ from sklearn.metrics import (accuracy_score, confusion_matrix,
 from imblearn.over_sampling import RandomOverSampler
 
 
-
 def analysis_and_model_page():
     st.title("📊 Анализ данных и модель предиктивного обслуживания")
 
@@ -20,7 +19,6 @@ def analysis_and_model_page():
     @st.cache_data
     def load_data():
         try:
-
             # Загрузка датасета
             data = pd.read_csv("data/predictive_maintenance.csv")
 
@@ -31,13 +29,27 @@ def analysis_and_model_page():
             # Предобработка данных
             required_columns = ['Type', 'Air temperature [K]', 'Process temperature [K]',
                                 'Rotational speed [rpm]', 'Torque [Nm]', 'Tool wear [min]',
-                                'Machine failure']
+                                'TWF', 'HDF', 'PWF', 'OSF', 'RNF', 'Machine failure']
 
             if not all(col in data.columns for col in required_columns):
                 raise ValueError("В данных отсутствуют необходимые столбцы")
 
             data = data[required_columns]  # Оставляем только нужные столбцы
             data['Type'] = LabelEncoder().fit_transform(data['Type'])
+
+            # Создаем новую целевую переменную для мультиклассовой классификации
+            # 0 - нет отказа, 1 - TWF, 2 - HDF, 3 - PWF, 4 - OSF, 5 - RNF
+            data['Failure_Type'] = 0  # По умолчанию нет отказа
+
+            # Заполняем типы отказов
+            data.loc[data['TWF'] == 1, 'Failure_Type'] = 1
+            data.loc[data['HDF'] == 1, 'Failure_Type'] = 2
+            data.loc[data['PWF'] == 1, 'Failure_Type'] = 3
+            data.loc[data['OSF'] == 1, 'Failure_Type'] = 4
+            data.loc[data['RNF'] == 1, 'Failure_Type'] = 5
+
+            # Удаляем исходные колонки с отказами
+            data = data.drop(columns=['TWF', 'HDF', 'PWF', 'OSF', 'RNF', 'Machine failure'])
 
             return data
 
@@ -53,7 +65,7 @@ def analysis_and_model_page():
                 'Rotational speed [rpm]': [1550, 1450, 1500, 1520, 1480, 1490, 1510, 1470, 1530, 1540],
                 'Torque [Nm]': [42, 38, 40, 41, 39, 40, 41, 39, 43, 38],
                 'Tool wear [min]': [10, 210, 110, 50, 180, 200, 30, 220, 5, 190],
-                'Machine failure': [0, 1, 0, 0, 1, 1, 0, 1, 0, 1]
+                'Failure_Type': [0, 1, 0, 0, 2, 3, 0, 4, 0, 5]
             })
 
     data = load_data()
@@ -64,10 +76,24 @@ def analysis_and_model_page():
 
     st.success(f"Данные успешно загружены! Записей: {len(data)}")
 
-    # Проверка баланса классов
-    class_balance = data['Machine failure'].value_counts(normalize=True)
-    if class_balance.min() < 0.1:  # Если один из классов меньше 10%
-        st.warning(f"Сильный дисбаланс классов: {class_balance[1]:.1%} отказов vs {class_balance[0]:.1%} нормы")
+    # Словарь для меток классов
+    failure_labels = {
+        0: "Нет отказа",
+        1: "TWF (Износ инструмента)",
+        2: "HDF (Теплоотвод)",
+        3: "PWF (Мощность)",
+        4: "OSF (Перегрузка)",
+        5: "RNF (Случайный)"
+    }
+
+    # Проверка баланса классов (исправленная часть)
+    failure_counts = data['Failure_Type'].value_counts(normalize=True)
+    st.subheader("Распределение классов:")
+    for failure_type, count in failure_counts.items():
+        st.write(f"{failure_labels[failure_type]}: {count:.1%}")
+
+    if len(failure_counts) > 1 and failure_counts.iloc[1:].min() < 0.05:
+        st.warning("Обнаружен сильный дисбаланс классов! Рекомендуется использовать методы балансировки.")
 
     # Разделы приложения
     tab1, tab2, tab3 = st.tabs(["📈 Анализ данных", "🤖 Обучение модели", "🔮 Прогнозирование"])
@@ -79,10 +105,20 @@ def analysis_and_model_page():
         st.subheader("Статистика данных")
         st.write(data.describe())
 
-        st.subheader("Распределение целевой переменной")
+        st.subheader("Распределение типов отказов")
+        failure_labels = {
+            0: "Нет отказа",
+            1: "TWF (Износ инструмента)",
+            2: "HDF (Теплоотвод)",
+            3: "PWF (Мощность)",
+            4: "OSF (Перегрузка)",
+            5: "RNF (Случайный)"
+        }
+
         fig, ax = plt.subplots()
-        sns.countplot(x='Machine failure', data=data, ax=ax)
-        ax.set_title("Количество отказов оборудования")
+        sns.countplot(x='Failure_Type', data=data, ax=ax)
+        ax.set_title("Распределение типов отказов")
+        ax.set_xticklabels([failure_labels[i] for i in sorted(data['Failure_Type'].unique())])
         st.pyplot(fig)
 
         st.subheader("Корреляция признаков")
@@ -95,8 +131,8 @@ def analysis_and_model_page():
         st.subheader("Настройки обучения")
 
         # Разделение данных
-        X = data.drop(columns=['Machine failure'])
-        y = data['Machine failure']
+        X = data.drop(columns=['Failure_Type'])
+        y = data['Failure_Type']
 
         # Проверка минимального количества образцов
         min_samples = 10  # Минимальное количество образцов для обучения
@@ -105,7 +141,7 @@ def analysis_and_model_page():
             st.error(f"Недостаточно данных для обучения. Требуется минимум {min_samples} образцов.")
             return
 
-        # Обработка дисбаланса (используем RandomOverSampler вместо SMOTE)
+        # Обработка дисбаланса классов
         ros = RandomOverSampler(random_state=42)
         try:
             X_res, y_res = ros.fit_resample(X, y)
@@ -143,7 +179,7 @@ def analysis_and_model_page():
         if model_type == "Логистическая регрессия":
             C = st.slider("Параметр регуляризации (C)", 0.01, 10.0, 1.0)
             max_iter = st.slider("Максимальное число итераций", 100, 1000, 100)
-            model = LogisticRegression(C=C, max_iter=max_iter, random_state=42)
+            model = LogisticRegression(C=C, max_iter=max_iter, random_state=42, multi_class='multinomial')
 
         elif model_type == "Случайный лес":
             n_estimators = st.slider("Количество деревьев", 10, 200, 100)
@@ -161,7 +197,8 @@ def analysis_and_model_page():
                 n_estimators=n_estimators,
                 learning_rate=learning_rate,
                 random_state=42,
-                eval_metric='logloss'
+                eval_metric='mlogloss',
+                objective='multi:softprob'
             )
 
         if st.button("Обучить модель", type="primary"):
@@ -171,54 +208,47 @@ def analysis_and_model_page():
 
                     # Оценка
                     y_pred = model.predict(X_test)
-                    y_proba = model.predict_proba(X_test)[:, 1]
+                    y_proba = model.predict_proba(X_test)
 
                     # Метрики
                     accuracy = accuracy_score(y_test, y_pred)
                     conf_matrix = confusion_matrix(y_test, y_pred)
-                    class_report = classification_report(y_test, y_pred)
-                    roc_auc = roc_auc_score(y_test, y_proba)
+                    class_report = classification_report(y_test, y_pred, target_names=failure_labels.values())
 
                     # Сохранение модели в session state
                     st.session_state.model = model
                     st.session_state.scaler = scaler
                     st.session_state.accuracy = accuracy
-                    st.session_state.roc_auc = roc_auc
+                    st.session_state.class_report = class_report
                     st.session_state.numeric_cols = numeric_cols
+                    st.session_state.failure_labels = failure_labels
 
                     # Вывод результатов
                     st.success("Обучение завершено!")
                     st.metric("Accuracy", f"{accuracy:.2%}")
-                    st.metric("ROC-AUC", f"{roc_auc:.2%}")
 
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader("Матрица ошибок")
-                        fig, ax = plt.subplots()
-                        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax)
+                        fig, ax = plt.subplots(figsize=(10, 8))
+                        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax,
+                                    xticklabels=failure_labels.values(),
+                                    yticklabels=failure_labels.values())
                         ax.set_xlabel("Предсказанные")
                         ax.set_ylabel("Фактические")
+                        plt.xticks(rotation=45)
+                        plt.yticks(rotation=0)
                         st.pyplot(fig)
 
                     with col2:
-                        st.subheader("ROC-кривая")
-                        fpr, tpr, _ = roc_curve(y_test, y_proba)
-                        fig, ax = plt.subplots()
-                        ax.plot(fpr, tpr, label=f'AUC = {roc_auc:.2f}')
-                        ax.plot([0, 1], [0, 1], 'k--')
-                        ax.set_xlabel("False Positive Rate")
-                        ax.set_ylabel("True Positive Rate")
-                        ax.legend()
-                        st.pyplot(fig)
-
-                    st.subheader("Отчёт классификации")
-                    st.code(class_report)
+                        st.subheader("Отчёт классификации")
+                        st.text(class_report)
 
                 except Exception as e:
                     st.error(f"Ошибка при обучении модели: {str(e)}")
 
     with tab3:
-        st.subheader("Прогнозирование отказа оборудования")
+        st.subheader("Прогнозирование типа отказа оборудования")
 
         if 'model' not in st.session_state:
             st.warning("Сначала обучите модель на вкладке 'Обучение модели'")
@@ -262,21 +292,36 @@ def analysis_and_model_page():
                         # Прогнозирование
                         model = st.session_state.model
                         prediction = model.predict(input_data_scaled)[0]
-                        proba = model.predict_proba(input_data_scaled)[0][1]
+                        proba = model.predict_proba(input_data_scaled)[0]
+
+                        # Получаем метки классов
+                        failure_labels = st.session_state.failure_labels
 
                         # Визуализация результата
-                        if prediction == 1:
-                            st.error(f"⚠️ ВНИМАНИЕ: Прогнозируется отказ оборудования!")
-                            st.write(f"Вероятность отказа: {proba:.1%}")
-                            st.image("https://img.icons8.com/color/96/high-risk.png", width=100)
-                        else:
+                        st.subheader("Результат прогнозирования")
+
+                        if prediction == 0:
                             st.success(f"✅ Оборудование работает нормально")
-                            st.write(f"Вероятность отказа: {proba:.1%}")
                             st.image("https://img.icons8.com/color/96/ok--v1.png", width=100)
+                        else:
+                            st.error(f"⚠️ ВНИМАНИЕ: Прогнозируется отказ типа {failure_labels[prediction]}")
+                            st.image("https://img.icons8.com/color/96/high-risk.png", width=100)
+
+                        # Отображаем вероятности для всех классов
+                        st.subheader("Вероятности для каждого типа отказа")
+                        proba_df = pd.DataFrame({
+                            'Тип отказа': [failure_labels[i] for i in range(len(failure_labels))],
+                            'Вероятность': proba
+                        }).sort_values('Вероятность', ascending=False)
+
+                        fig, ax = plt.subplots(figsize=(10, 5))
+                        sns.barplot(x='Вероятность', y='Тип отказа', data=proba_df, ax=ax)
+                        ax.set_title("Вероятности типов отказов")
+                        st.pyplot(fig)
 
                         # Дополнительная информация
                         st.info(f"Точность модели: {st.session_state.accuracy:.1%}")
-                        st.info(f"ROC-AUC модели: {st.session_state.roc_auc:.2f}")
+                        st.text("Отчёт классификации модели:\n" + st.session_state.class_report)
 
                     except Exception as e:
                         st.error(f"Ошибка при прогнозировании: {str(e)}")
